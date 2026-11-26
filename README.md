@@ -30,10 +30,8 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
 
 1. Download `mRecorder-x.y.z.dmg` from [Releases](https://github.com/yevgenmalafeyev/mrecorder/releases/latest),
    open it and drag **mRecorder** to **Applications**. Requires macOS 15 or later (Apple Silicon or Intel).
-2. The app is signed but not notarized by Apple, so the first launch is blocked with
-   *"Apple could not verify mRecorder…"*. Click **Done**, open **System Settings → Privacy & Security**,
-   scroll down and click **Open Anyway** next to mRecorder, then confirm. This is needed only once.
-   (Or in Terminal: `xattr -dr com.apple.quarantine /Applications/mRecorder.app`.)
+2. The app is signed with a Developer ID and notarized by Apple, so it opens like any downloaded app:
+   confirm the "downloaded from the Internet" question once.
 3. The icon appears in the menu bar (there is no Dock icon). Allow Screen Recording, Microphone and Camera
    when asked; after granting Screen Recording, quit and reopen the app.
 
@@ -43,7 +41,8 @@ transcription needs Apple Silicon.
 ## Build
 
 Requires Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen) and an Apple Development signing identity
-(a stable identity keeps the Screen Recording permission across rebuilds).
+(a stable identity keeps the Screen Recording permission across rebuilds). `make release` builds the universal DMG,
+signs it with a Developer ID certificate and notarizes it (one-time setup is described in the Makefile).
 
 ```sh
 make run      # generate, build, sign, install to ~/Applications and launch
