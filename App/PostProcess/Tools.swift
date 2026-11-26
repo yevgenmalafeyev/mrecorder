@@ -47,40 +47,110 @@ enum Tools {
                     timeout: TimeInterval = 3600) async throws -> Result {
         try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global(qos: .utility).async {
-                let p = Process()
-                p.executableURL = tool
-                p.arguments = args
-                if let cwd { p.currentDirectoryURL = cwd }
-                p.environment = environment
-
-                let out = Pipe(), err = Pipe(), inp = Pipe()
-                p.standardOutput = out
-                p.standardError = err
-                p.standardInput = stdin == nil ? FileHandle.nullDevice : inp
-
-                var outData = Data(), errData = Data()
-                let group = DispatchGroup()
-                group.enter(); group.enter()
-                DispatchQueue.global().async { outData = out.fileHandleForReading.readDataToEndOfFile(); group.leave() }
-                DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); group.leave() }
-
-                do { try p.run() } catch { cont.resume(throwing: error); return }
-                if let stdin {
-                    // A tool that exits early closes the pipe; that must not raise (SIGPIPE is ignored at launch).
-                    try? inp.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
-                    try? inp.fileHandleForWriting.close()
+                do {
+                    cont.resume(returning: try spawn(tool, args, stdin: stdin, cwd: cwd, timeout: timeout))
+                } catch {
+                    cont.resume(throwing: error)
                 }
-                let timer = DispatchWorkItem { if p.isRunning { p.terminate() } }
-                DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
-                p.waitUntilExit()
-                timer.cancel()
-                group.wait()
-                cont.resume(returning: Result(
-                    status: p.terminationStatus,
-                    stdout: String(decoding: outData, as: UTF8.self),
-                    stderr: String(decoding: errData, as: UTF8.self)
-                ))
             }
         }
+    }
+
+    /// Makes the spawned program responsible for itself in the eyes of macOS privacy protection (TCC).
+    /// Without it a child counts as part of this app and silently gets its Screen Recording, Microphone and
+    /// Camera permissions, so a fake `ffmpeg` planted in a user-writable folder could record the screen.
+    /// (System function without a public header; also used by browsers and Xcode for the same purpose.)
+    private typealias Disclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
+    private static let disclaim: Disclaim? = {
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim")
+        else { return nil }
+        return unsafeBitCast(sym, to: Disclaim.self)
+    }()
+
+    private static func spawn(_ tool: URL, _ args: [String], stdin: String?, cwd: URL?,
+                              timeout: TimeInterval) throws -> Result {
+        let name = tool.lastPathComponent
+        var attr: posix_spawnattr_t?
+        posix_spawnattr_init(&attr)
+        defer { posix_spawnattr_destroy(&attr) }
+        // The child gets only the three pipes below, no other open files of this app.
+        // It also starts with default signal handling: the worker thread spawning it blocks signals, and a
+        // child that inherited that could not be stopped by the timeout.
+        var noSignals = sigset_t(), allSignals = sigset_t()
+        sigemptyset(&noSignals)
+        sigfillset(&allSignals)
+        posix_spawnattr_setsigmask(&attr, &noSignals)
+        posix_spawnattr_setsigdefault(&attr, &allSignals)
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
+        // Never run a tool with this app's permissions: if they can't be dropped, don't run it.
+        guard let disclaim, disclaim(&attr, 1) == 0 else {
+            throw ToolError.failed(name, "could not start it without this app's permissions")
+        }
+
+        let out = Pipe(), err = Pipe(), inp = Pipe()
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        if stdin != nil {
+            posix_spawn_file_actions_adddup2(&actions, inp.fileHandleForReading.fileDescriptor, 0)
+        } else {
+            posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        }
+        posix_spawn_file_actions_adddup2(&actions, out.fileHandleForWriting.fileDescriptor, 1)
+        posix_spawn_file_actions_adddup2(&actions, err.fileHandleForWriting.fileDescriptor, 2)
+        if let cwd { posix_spawn_file_actions_addchdir_np(&actions, cwd.path) }
+
+        var argv: [UnsafeMutablePointer<CChar>?] = ([tool.path] + args).map { strdup($0) } + [nil]
+        var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+        defer { for p in argv + envp { free(p) } }
+
+        var pid: pid_t = 0
+        let rc = posix_spawn(&pid, tool.path, &actions, &attr, &argv, &envp)
+        guard rc == 0 else { throw ToolError.failed(name, "could not start: " + String(cString: strerror(rc))) }
+
+        // Close this app's copies of the child's ends, so reads finish when the child exits.
+        try? out.fileHandleForWriting.close()
+        try? err.fileHandleForWriting.close()
+        try? inp.fileHandleForReading.close()
+
+        var outData = Data(), errData = Data()
+        let group = DispatchGroup()
+        group.enter(); group.enter()
+        DispatchQueue.global().async { outData = out.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+        DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+
+        if let stdin {
+            // A tool that exits early closes the pipe; that must not raise (SIGPIPE is ignored at launch).
+            try? inp.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
+        }
+        try? inp.fileHandleForWriting.close()
+
+        // The lock makes sure the timeout never signals a process id after the child was collected.
+        let lock = NSLock()
+        var exited = false
+        let timer = DispatchWorkItem {
+            lock.lock(); defer { lock.unlock() }
+            if !exited { kill(pid, SIGTERM) }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
+        var status: Int32 = 0
+        lock.lock()
+        while true {
+            lock.unlock()
+            let r = waitpid(pid, &status, 0)
+            lock.lock()
+            if r == pid || (r == -1 && errno != EINTR) { break }
+        }
+        exited = true
+        lock.unlock()
+        timer.cancel()
+        group.wait()
+
+        let signal = status & 0x7f
+        return Result(
+            status: signal == 0 ? (status >> 8) & 0xff : -signal,
+            stdout: String(decoding: outData, as: UTF8.self),
+            stderr: String(decoding: errData, as: UTF8.self)
+        )
     }
 }
