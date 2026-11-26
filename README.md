@@ -16,6 +16,20 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
 - Scriptable: `macrecorder://start`, `stop`, `toggle`, `pause`, `resume`, `settings`,
   `camera?on=1&shape=circle&corner=bottomRight`, `source?mode=all&output=combined`.
 
+## Install
+
+1. Download `MacRecorder-x.y.z.dmg` from [Releases](https://github.com/yevgenmalafeyev/mac-recorder/releases/latest),
+   open it and drag **MacRecorder** to **Applications**. Requires macOS 15 or later (Apple Silicon or Intel).
+2. The app is signed but not notarized by Apple, so the first launch is blocked with
+   *"Apple could not verify MacRecorder…"*. Click **Done**, open **System Settings → Privacy & Security**,
+   scroll down and click **Open Anyway** next to MacRecorder, then confirm. This is needed only once.
+   (Or in Terminal: `xattr -dr com.apple.quarantine /Applications/MacRecorder.app`.)
+3. The icon appears in the menu bar (there is no Dock icon). Allow Screen Recording, Microphone and Camera
+   when asked; after granting Screen Recording, quit and reopen the app.
+
+Optional extras for transcription and summaries are listed under [Build](#build) → optional tools;
+transcription needs Apple Silicon.
+
 ## Build
 
 Requires Xcode 16+, [XcodeGen](https://github.com/yonaskolb/XcodeGen) and an Apple Development signing identity

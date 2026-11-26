@@ -4,7 +4,7 @@ SIGN_ID ?= Apple Development
 APP      = build.noindex/Build/Products/Release/MacRecorder.app
 DEST     = $(HOME)/Applications/MacRecorder.app
 
-.PHONY: gen build sign install run test clean logs icon
+.PHONY: gen build sign install run test clean logs icon dist
 
 gen:
 	xcodegen generate --quiet
@@ -33,6 +33,24 @@ logs:
 
 clean:
 	rm -rf build.noindex build MacRecorder.xcodeproj
+
+# Universal (Apple Silicon + Intel) DMG for a GitHub release: build.noindex/dist/MacRecorder-<version>.dmg
+VERSION := $(shell sed -nE 's/.*MARKETING_VERSION: "(.*)"/\1/p' project.yml)
+DIST     = build.noindex/dist
+DMG      = $(DIST)/MacRecorder-$(VERSION).dmg
+
+dist: gen
+	xcodebuild -project MacRecorder.xcodeproj -scheme MacRecorder -configuration Release \
+		-derivedDataPath build.noindex CODE_SIGNING_ALLOWED=NO ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO -quiet build
+	codesign --force --options runtime --timestamp \
+		--entitlements App/MacRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
+	rm -rf $(DIST)
+	mkdir -p $(DIST)/root
+	cp -R $(APP) $(DIST)/root/
+	ln -s /Applications $(DIST)/root/Applications
+	hdiutil create -quiet -volname "MacRecorder $(VERSION)" -srcfolder $(DIST)/root -fs HFS+ -format UDZO $(DMG)
+	rm -rf $(DIST)/root
+	@echo "Built $(DMG)"
 
 # Regenerate App/AppIcon.icns from Tools/make-icon.swift
 ICONDIR = build.noindex/icon
