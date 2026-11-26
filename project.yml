@@ -1,0 +1,34 @@
+name: MacRecorder
+options:
+  bundleIdPrefix: local.macrecorder
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  RecorderCore:
+    path: Packages/RecorderCore
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    ENABLE_HARDENED_RUNTIME: YES
+targets:
+  MacRecorder:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+          - MacRecorder.entitlements
+    dependencies:
+      - package: RecorderCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.macrecorder.MacRecorder
+        PRODUCT_NAME: MacRecorder
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/MacRecorder.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
