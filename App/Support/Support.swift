@@ -30,7 +30,7 @@ enum Settings {
 
     /// Selected display (CGDirectDisplayID). 0 = main display.
     static var displayID: UInt32 {
-        get { UInt32(d.integer(forKey: "displayID")) }
+        get { UInt32(truncatingIfNeeded: d.integer(forKey: "displayID")) }
         set { d.set(Int(newValue), forKey: "displayID") }
     }
 
@@ -47,7 +47,7 @@ enum Settings {
     }
 
     static var fps: Int {
-        get { let v = d.integer(forKey: Keys.fps); return v > 0 ? v : 30 }
+        get { d.integer(forKey: Keys.fps) == 60 ? 60 : 30 }
         set { d.set(newValue, forKey: Keys.fps) }
     }
 
@@ -78,7 +78,8 @@ enum Settings {
     static var normalizeAudio: Bool { bool(Keys.normalizeAudio, default: false) }
     static var transcribe: Bool { bool(Keys.transcribe, default: true) }
     static var embedSubtitles: Bool { bool(Keys.embedSubtitles, default: true) }
-    static var summaryEnabled: Bool { bool(Keys.summary, default: true) }
+    /// Off by default: a summary sends the transcript to Claude.
+    static var summaryEnabled: Bool { bool(Keys.summary, default: false) }
     static var summaryShort: Bool { bool(Keys.summaryShort, default: true) }
     static var summaryActions: Bool { bool(Keys.summaryActions, default: true) }
     static var summaryChapters: Bool { bool(Keys.summaryChapters, default: true) }

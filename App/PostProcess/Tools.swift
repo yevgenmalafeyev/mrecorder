@@ -81,7 +81,10 @@ enum Tools {
         sigfillset(&allSignals)
         posix_spawnattr_setsigmask(&attr, &noSignals)
         posix_spawnattr_setsigdefault(&attr, &allSignals)
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
+        // Its own process group, so the timeout also stops helpers the tool started.
+        posix_spawnattr_setpgroup(&attr, 0)
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF
+                                              | POSIX_SPAWN_SETPGROUP))
         // Never run a tool with this app's permissions: if they can't be dropped, don't run it.
         guard let disclaim, disclaim(&attr, 1) == 0 else {
             throw ToolError.failed(name, "could not start it without this app's permissions")
@@ -125,26 +128,35 @@ enum Tools {
         }
         try? inp.fileHandleForWriting.close()
 
-        // The lock makes sure the timeout never signals a process id after the child was collected.
+        // On timeout: ask the tool's process group to stop, then force it. The lock and `exited` make sure
+        // nothing is signalled after the child was collected (its id could then belong to another program).
         let lock = NSLock()
         var exited = false
         let timer = DispatchWorkItem {
             lock.lock(); defer { lock.unlock() }
-            if !exited { kill(pid, SIGTERM) }
+            guard !exited else { return }
+            kill(-pid, SIGTERM)
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+                lock.lock(); defer { lock.unlock() }
+                if !exited { kill(-pid, SIGKILL) }
+            }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
-        var status: Int32 = 0
-        lock.lock()
-        while true {
-            lock.unlock()
-            let r = waitpid(pid, &status, 0)
-            lock.lock()
-            if r == pid || (r == -1 && errno != EINTR) { break }
-        }
-        exited = true
-        lock.unlock()
+        // Wait without collecting, mark it exited, and only then collect.
+        var info = siginfo_t()
+        while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == -1, errno == EINTR {}
+        lock.lock(); exited = true; lock.unlock()
         timer.cancel()
-        group.wait()
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) == -1, errno == EINTR {}
+
+        // A helper that outlived the tool can keep the pipes open: stop what is left of the group.
+        if group.wait(timeout: .now() + 5) == .timedOut {
+            kill(-pid, SIGKILL)
+            if group.wait(timeout: .now() + 5) == .timedOut {
+                throw ToolError.failed(name, "its output could not be read")
+            }
+        }
 
         let signal = status & 0x7f
         return Result(

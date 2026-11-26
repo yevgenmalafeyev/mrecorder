@@ -173,6 +173,22 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
     // MARK: - Start
 
     func start() async throws {
+        do {
+            try await startCapture()
+        } catch {
+            // Nothing keeps capturing or stays on disk after a failed start.
+            await stopStreams()
+            camera.stop()
+            for o in outputs {
+                o.writer.cancel()
+                try? FileManager.default.removeItem(at: o.writer.url)
+            }
+            outputs = []
+            throw error
+        }
+    }
+
+    private func startCapture() async throws {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let me = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
         let ownIncluded = content.windows.filter { request.includeOwnWindows.contains($0.windowID) }
@@ -311,11 +327,6 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
             return first
         }
         guard gotFrames else {
-            await stopStreams()
-            for o in outputs {
-                o.writer.cancel()
-                try? FileManager.default.removeItem(at: o.writer.url)
-            }
             throw RecorderError.noFrames
         }
 

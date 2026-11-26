@@ -4,7 +4,7 @@ SIGN_ID ?= Apple Development
 APP      = build.noindex/Build/Products/Release/mRecorder.app
 DEST     = $(HOME)/Applications/mRecorder.app
 
-.PHONY: gen build sign install run test clean logs icon dist
+.PHONY: gen build sign install run test clean logs icon dist notarize release
 
 gen:
 	xcodegen generate --quiet
@@ -35,6 +35,11 @@ clean:
 	rm -rf build.noindex build mRecorder.xcodeproj
 
 # Universal (Apple Silicon + Intel) DMG for a GitHub release: build.noindex/dist/mRecorder-<version>.dmg
+# `make release` = dist + notarize: signed with Developer ID and notarized by Apple, so it opens without warnings.
+# One-time setup for notarization (asks for an app-specific password from account.apple.com):
+#   xcrun notarytool store-credentials mrecorder-notary --apple-id <your Apple ID> --team-id <team id>
+DIST_ID        ?= Developer ID Application
+NOTARY_PROFILE ?= mrecorder-notary
 VERSION := $(shell sed -nE 's/.*MARKETING_VERSION: "(.*)"/\1/p' project.yml)
 DIST     = build.noindex/dist
 DMG      = $(DIST)/mRecorder-$(VERSION).dmg
@@ -43,14 +48,23 @@ dist: gen
 	xcodebuild -project mRecorder.xcodeproj -scheme mRecorder -configuration Release \
 		-derivedDataPath build.noindex CODE_SIGNING_ALLOWED=NO ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO -quiet build
 	codesign --force --options runtime --timestamp \
-		--entitlements App/mRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
+		--entitlements App/mRecorder.entitlements --sign "$(DIST_ID)" $(APP)
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/root
 	cp -R $(APP) $(DIST)/root/
 	ln -s /Applications $(DIST)/root/Applications
 	hdiutil create -quiet -volname "mRecorder $(VERSION)" -srcfolder $(DIST)/root -fs HFS+ -format UDZO $(DMG)
 	rm -rf $(DIST)/root
+	codesign --force --timestamp --sign "$(DIST_ID)" $(DMG)
 	@echo "Built $(DMG)"
+
+notarize:
+	xcrun notarytool submit $(DMG) --keychain-profile $(NOTARY_PROFILE) --wait
+	xcrun stapler staple $(DMG)
+	spctl --assess --type open --context context:primary-signature -v $(DMG)
+	shasum -a 256 $(DMG)
+
+release: dist notarize
 
 # Regenerate App/AppIcon.icns from Tools/make-icon.swift
 ICONDIR = build.noindex/icon

@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             self.notifySaved(url, title: recovered != nil ? "Recording recovered after an unexpected quit" : "Recording saved")
         }
         UNUserNotificationCenter.current().delegate = self
+        umask(0o077) // recordings, transcripts and summaries are readable by this user only
         signal(SIGPIPE, SIG_IGN) // writing to a tool that already exited must not end the app
         Hotkeys.shared.handler = { [weak self] action in self?.handleHotkey(action) }
         Hotkeys.shared.register()
@@ -112,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 $0.deletingLastPathComponent().path == folder
                     && $0.lastPathComponent.hasPrefix(baseURL.lastPathComponent)
                     && ["mp4", "mov"].contains($0.pathExtension.lowercased())
-                    && FileManager.default.fileExists(atPath: $0.path)
+                    && (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true // not a link
             }
             Task { @MainActor in
                 var playable: [URL] = []
@@ -138,18 +139,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             let command = url.host ?? ""
             // Any web page or app can open these links. Unless the user allowed link control, a link can only
             // open the New Recording window or Configuration, never record or change a recording by itself.
-            let allowed = Settings.allowURLControl
+            let needsControl = !["new", "settings"].contains(command)
+            let allowed = needsControl && linkControlAllowed()
             if !allowed, !["start", "new", "toggle", "settings"].contains(command) {
                 log.notice("Ignored link command \(command, privacy: .private): link control is off in Configuration")
                 continue
             }
             switch command {
-            case "start": allowed ? startRecording() : showSetup()
-            case "new": showSetup()
+            case "start": allowed ? startRecording() : openSetup(fromLink: true)
+            case "new": openSetup(fromLink: true)
             case "mute": toggleMute()
             case "stop": stopRecording()
             case "toggle":
-                if state == .idle { allowed ? startRecording() : showSetup() } else if allowed { stopRecording() }
+                if state == .idle { allowed ? startRecording() : openSetup(fromLink: true) } else if allowed { stopRecording() }
             case "source":
                 // mrecorder://source?mode=display&id=1 | mode=all&output=combined|separate|both | mode=window&app=Safari
                 guard state == .idle else { break }
@@ -438,9 +440,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
-    @objc private func showSetup() {
+    @objc private func showSetup() { openSetup(fromLink: false) }
+
+    private func openSetup(fromLink: Bool) {
         guard state == .idle else { return }
-        SetupWindowController.shared.show { [weak self] in self?.startRecording() }
+        SetupWindowController.shared.show(fromLink: fromLink) { [weak self] in self?.startRecording() }
+    }
+
+    /// The setting alone is not enough: any program can change this app's settings, so link control must also
+    /// be confirmed by a click once per launch, which a program cannot fake.
+    private var linkControlConfirmed = false
+    private func linkControlAllowed() -> Bool {
+        guard Settings.allowURLControl else { return false }
+        if linkControlConfirmed { return true }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Allow links and other apps to control recording?"
+        alert.informativeText = "A link or another app asked mRecorder to start, stop or change a recording. If you allow it, such requests work without asking until mRecorder quits."
+        alert.addButton(withTitle: "Don't Allow") // the default button, so Return does not approve
+        alert.addButton(withTitle: "Allow")
+        linkControlConfirmed = alert.runModal() == .alertSecondButtonReturn
+        return linkControlConfirmed
     }
 
     @objc private func toggleMute() {
@@ -527,7 +547,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let url = Bundle.main.bundleURL
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 1; open \"$0\"", url.path] // the path is an argument, never shell code
+        // The path is an argument, never shell code; fixed tool paths and an empty environment.
+        task.arguments = ["-c", "/bin/sleep 1; /usr/bin/open \"$0\"", url.path]
+        task.environment = [:]
         try? task.run()
         NSApp.terminate(nil)
     }

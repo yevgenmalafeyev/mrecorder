@@ -9,10 +9,11 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
   Shape, corner, size and on/off can change during recording.
 - Pause / resume, HEVC / H.264 / ProRes, 30 or 60 fps, resolution cap to save disk space.
 - Crash-safe: files are written in 5-second fragments and recovered at the next launch.
-- Optional after each recording, all on your Mac:
-  - even out the volume (EBU R128 loudness levelling of the mixed track),
-  - subtitles with [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (`.srt` + embedded track via ffmpeg),
-  - a summary and a descriptive file name with the [Claude Code](https://claude.com/claude-code) CLI.
+- Optional after each recording:
+  - on your Mac: even out the volume (EBU R128 loudness levelling of the mixed track),
+  - on your Mac: subtitles with [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (`.srt` + embedded track via ffmpeg),
+  - off by default, because it sends the transcript to Claude with your account: a summary and a descriptive
+    file name with the [Claude Code](https://claude.com/claude-code) CLI.
 - **Start Recording…** opens a setup window with your last choices preselected: pick a screen (shown in
   its real arrangement with a live preview), all screens, or a window (live previews with titles); turn system
   audio, the microphone and the camera on or off, place the camera, and choose the folder. Return starts;
@@ -22,7 +23,8 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
 - Scriptable: `mrecorder://start`, `new` (setup window), `stop`, `toggle`, `pause`, `resume`, `mute`, `settings`,
   `camera?on=1&shape=circle&corner=bottomRight`, `source?mode=all&output=combined`.
   Since any web page or app can open such a link, links only open the setup window until you turn on
-  Configuration → General → Automation; then `start` records right away and the other commands work.
+  Configuration → General → Automation and confirm once after each launch; then `start` records right away
+  and the other commands work.
 
 ## Install
 

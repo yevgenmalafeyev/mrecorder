@@ -15,7 +15,8 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible == true }
 
     /// `onStart` runs after the choices are saved and the window is closed.
-    func show(onStart: @escaping () -> Void) {
+    /// Opened from a link, Start stays off for a moment so a key press or click already under way can't start it.
+    func show(fromLink: Bool = false, onStart: @escaping () -> Void) {
         MainActor.assumeIsolated {
             if let window {
                 NSApp.activate(ignoringOtherApps: true)
@@ -23,6 +24,12 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
                 return
             }
             let model = SetupModel()
+            if fromLink {
+                model.armed = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak model] in
+                    MainActor.assumeIsolated { model?.armed = true }
+                }
+            }
             model.onStart = { [weak self] in
                 self?.close()
                 // Let the window leave the screen before capture begins.
@@ -103,6 +110,8 @@ final class SetupModel: ObservableObject {
 
     @Published var saveFolder: URL
     @Published var screenGranted = Permissions.screenGranted
+    /// False for a moment after a link opened the window; Start is off meanwhile.
+    @Published var armed = true
 
     var onStart: (() -> Void)?
     var onCancel: (() -> Void)?
@@ -137,7 +146,7 @@ final class SetupModel: ObservableObject {
     }
 
     var canStart: Bool {
-        guard screenGranted else { return false }
+        guard screenGranted, armed else { return false }
         switch kind {
         case .screen: return true
         case .window: return selectedWindow.map { id in windows.contains { $0.id == id } } ?? false

@@ -27,7 +27,7 @@ struct SettingsView: View {
     @AppStorage(Settings.Keys.normalizeAudio) private var normalizeAudio = false
     @AppStorage(Settings.Keys.transcribe) private var transcribe = true
     @AppStorage(Settings.Keys.embedSubtitles) private var embedSubtitles = true
-    @AppStorage(Settings.Keys.summary) private var summary = true
+    @AppStorage(Settings.Keys.summary) private var summary = false
     @AppStorage(Settings.Keys.summaryShort) private var summaryShort = true
     @AppStorage(Settings.Keys.summaryActions) private var summaryActions = true
     @AppStorage(Settings.Keys.summaryChapters) private var summaryChapters = true
@@ -173,7 +173,7 @@ struct SettingsView: View {
                 }
                 .disabled(!transcribe || !summary)
                 .padding(.leading, 16)
-                Text("Summaries and titles are made by your local Claude CLI, which sends the transcript to Claude using your account. With no speech, three screenshots are sent, and only when titles from Claude are on. The CLI runs without your Claude Code settings, hooks, connectors or tools, so text in a recording cannot make it act.")
+                Text("Summaries and titles are made by your local Claude CLI, which sends the transcript to Claude using your account. With no speech, three screenshots are sent, and only when titles from Claude are on. The CLI runs without your Claude Code settings, hooks or connectors and without tools (it can only read its own screenshots), so text in a recording cannot make it act.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

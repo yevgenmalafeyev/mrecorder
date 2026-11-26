@@ -225,7 +225,8 @@ actor PostProcessor {
         """
         // Recorded content can contain prompt injection, so the CLI runs without the user's settings, hooks,
         // MCP servers, skills or permission rules, and with no tools except reading its own screenshots.
-        var args = ["-p", "--model", "sonnet", "--safe-mode", "--strict-mcp-config", "--disable-slash-commands",
+        // --restricted also ignores the user's settings files, whose permission rules could allow more.
+        var args = ["-p", "--model", "sonnet", "--safe-mode", "--restricted", "--strict-mcp-config", "--disable-slash-commands",
                     "--no-session-persistence", "--permission-mode", "dontAsk"]
 
         if segments.isEmpty {
@@ -236,7 +237,7 @@ actor PostProcessor {
             \(frames.map(\.path).joined(separator: "\n"))
 
             """
-            let folder = tmp.resolvingSymlinksInPath().path
+            let folder = realpath(tmp.path, nil).map { p -> String in defer { free(p) }; return String(cString: p) } ?? tmp.path
             args += ["--tools", "Read", "--allowedTools", "Read(/\(folder)/**)"]
         } else {
             args += ["--tools", ""]
@@ -284,6 +285,7 @@ actor PostProcessor {
             if markdown.hasPrefix("(nothing") { markdown = "" }
         }
         guard !title.isEmpty else { throw ToolError.failed("claude", "no title in output") }
+        if segments.isEmpty { markdown = "" } // only a title was asked for; keep nothing else Claude wrote
         return (title, markdown)
     }
 
