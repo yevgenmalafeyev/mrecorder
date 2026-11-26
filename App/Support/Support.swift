@@ -4,7 +4,7 @@ import CoreMedia
 import OSLog
 import RecorderCore
 
-let log = Logger(subsystem: "local.macrecorder.MacRecorder", category: "app")
+let log = Logger(subsystem: "io.github.yevgenmalafeyev.mrecorder", category: "app")
 
 /// Current host time in seconds, on the same clock ScreenCaptureKit uses for sample timestamps.
 func hostNow() -> Double {

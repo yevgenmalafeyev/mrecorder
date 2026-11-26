@@ -145,11 +145,11 @@ Prevent display sleep while recording; display unplugged / stream error → stop
 XcodeGen (`project.yml`, generated `.xcodeproj` git-ignored) + local Swift package `RecorderCore` for pure, unit-tested logic.
 
 ```
-mac-recorder/
+mrecorder/
   project.yml
   Makefile                      # gen, build, install (~/Applications), run, test
   App/
-    Info.plist, MacRecorder.entitlements
+    Info.plist, mRecorder.entitlements
     AppDelegate.swift, StatusItemController.swift
     Settings/  Onboarding/  Capture/  Pipeline/  Bubble/
   Packages/RecorderCore/
@@ -159,7 +159,7 @@ mac-recorder/
 
 - Info.plist: `LSUIElement = YES`, mic / camera / screen-capture usage descriptions.
 - Entitlements: hardened runtime, `device.audio-input`, `device.camera`, no sandbox.
-- Signing: Screen Recording permission is tied to the code-signing identity → always sign with the same Apple Development certificate and run the copy installed at `~/Applications/MacRecorder.app`. M0 tests that the grant survives a rebuild.
+- Signing: Screen Recording permission is tied to the code-signing identity → always sign with the same Apple Development certificate and run the copy installed at `~/Applications/mRecorder.app`. M0 tests that the grant survives a rebuild.
 - macOS 15 needed for `captureMicrophone`; nothing needs 26/27. macOS 15+ periodically re-asks for screen-recording consent; expected.
 
 ## 6. Menu and settings
@@ -245,7 +245,7 @@ Implemented:
   3. Summary `.md` via Claude CLI with selectable sections: short summary, decisions and action items, chapters with timestamps, full transcript.
   4. Rename video, `.srt` and `.md` with the title.
 - With no speech, the title comes from three screenshots that Claude views with its Read tool.
-- URL scheme `macrecorder://start|stop|toggle`.
+- URL scheme `mrecorder://start|stop|toggle`.
 
 ## 13. Status (2026-11-25)
 
@@ -253,7 +253,7 @@ Implemented:
 - M2 pause/resume: done. The timeline keeps every pause interval, so late audio from before a pause still maps correctly. Tested with a 5 s pause: the file is shorter by exactly the paused time.
 - M3 camera overlay (composited): done. Camera menu: on/off, Circle/Rectangle, 4 corners, S/M/L size, mirror, device (incl. Continuity Camera). All of these work live during recording. The camera runs only while the overlay is on.
   - The C920 takes ~2 s to deliver its first frame, so the overlay appears ~2 s after start.
-- URL commands: `macrecorder://start|stop|toggle|pause|resume`, `macrecorder://camera?on=1&shape=circle|rectangle&corner=topLeft|topRight|bottomLeft|bottomRight&size=0.22`.
+- URL commands: `mrecorder://start|stop|toggle|pause|resume`, `mrecorder://camera?on=1&shape=circle|rectangle&corner=topLeft|topRight|bottomLeft|bottomRight&size=0.22`.
 - App icon: `Tools/make-icon.swift`, regenerate with `make icon`.
 - Next: M4 (two displays: combined / separate / both), M5 (window), M6 (bubble mode).
 - M4 two displays: done. Source menu → All Screens as one combined video / separate videos / both.
@@ -265,7 +265,7 @@ Implemented:
   - System audio is still the whole system. The camera is composited onto the window video.
   - A resized window stays fully visible (aspect kept). Cosmetic: it is top-aligned, not centred.
   - Closing the window stops and saves quietly.
-- URL: `macrecorder://source?mode=display&id=N | mode=all&output=combined|separate|both | mode=window&app=Name`.
+- URL: `mrecorder://source?mode=display&id=N | mode=all&output=combined|separate|both | mode=window&app=Name`.
 - M6 bubble mode: done. Settings → Camera appears: "Only in the video" or "As a floating bubble on screen".
   - The bubble is a click-through panel above all windows and Spaces (incl. full screen). It is snapped to the chosen corner of the screen's visible area.
   - It is captured because the filter excludes this app except the bubble window. The panel stays on screen (transparent) while the camera is off, so it can be switched on mid-recording.
@@ -277,7 +277,7 @@ Implemented:
   - Disk guard: won't start under 2 GB free; stops under 1 GB.
   - "Recording saved" notification; clicking it reveals the file in Finder.
   - Window mode now centres a resized window (content area derived from the window's aspect ratio).
-  - `macrecorder://settings`.
+  - `mrecorder://settings`.
 - M8 normalize audio: done. Settings → "Even out the volume" (off by default). Post-stop pass: BS.1770 meter in RecorderCore (`LoudnessAnalyzer`, one pass, exact mix loudness from per-100 ms energies + cross terms, unit-tested against reference sines; matches `ffmpeg ebur128` to 0.1 LU on real files), `NormalizePlan` (each source to -18 LUFS, ±20 dB cap, sources under -50 LUFS left alone; mix to -16 LUFS; -1 dBFS limiter). `AudioNormalizer` rebuilds only the Mix track (AAC or 24-bit PCM like the original); video, System, Mic copied untouched, enabled flags and alternate group kept, sync verified (lag 0). Runs before transcription. ~0.1 s per 15 s of HEVC; ~1 s for 780 MB of ProRes.
 - M8 crash safety: done. Writers use `movieFragmentInterval` 5 s; a normal finish yields an ordinary (non-fragmented) file, so no remux is needed. In-progress files are journaled in UserDefaults; at the next launch they are recovered (verified with kill -9: 10 s of a 14.5 s recording kept), post-processed, and announced as "Recording recovered after an unexpected quit". Quitting or logging out while recording stops and saves first.
 - Open: microphone hot-swap mid-recording is untested. With the MacBook lid closed the built-in mic records silence (hardware), so pick another mic in clamshell mode. Post-processing that is interrupted by quitting is not resumed.

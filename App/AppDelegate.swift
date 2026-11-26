@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private func removeStaleTempFolders() {
         let tmp = FileManager.default.temporaryDirectory
         let names = (try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? []
-        for n in names where n.hasPrefix("macrecorder-") {
+        for n in names where n.hasPrefix("mrecorder-") {
             try? FileManager.default.removeItem(at: tmp.appendingPathComponent(n))
         }
     }
@@ -116,15 +116,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
-    /// macrecorder://start|stop|toggle|pause|resume|camera?on=1&shape=&corner=&size= (Raycast, Shortcuts, scripts).
+    /// mrecorder://start|stop|toggle|pause|resume|camera?on=1&shape=&corner=&size= (Raycast, Shortcuts, scripts).
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "macrecorder" {
+        for url in urls where url.scheme == "mrecorder" {
             switch url.host {
             case "start": startRecording()
             case "stop": stopRecording()
             case "toggle": state == .idle ? startRecording() : stopRecording()
             case "source":
-                // macrecorder://source?mode=display&id=1 | mode=all&output=combined|separate|both | mode=window&app=Safari
+                // mrecorder://source?mode=display&id=1 | mode=all&output=combined|separate|both | mode=window&app=Safari
                 guard state == .idle else { break }
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 func v(_ n: String) -> String? { q.first { $0.name == n }?.value }
@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             case "pause": if session?.isPaused == false { togglePause() }
             case "resume": if session?.isPaused == true { togglePause() }
             case "camera":
-                // macrecorder://camera?on=1&shape=circle&corner=topLeft&size=0.22
+                // mrecorder://camera?on=1&shape=circle&corner=topLeft&size=0.22
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 func v(_ n: String) -> String? { q.first { $0.name == n }?.value }
                 if let on = v("on"), (on == "1") != Settings.overlay.enabled { toggleCamera() }
@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         guard let button = statusItem?.button else { return }
         switch state {
         case .idle:
-            button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "MacRecorder")
+            button.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: "mRecorder")
             button.title = Permissions.screenGranted ? "" : " !"
             button.contentTintColor = nil
             titleTimer?.invalidate()
@@ -372,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             menu.addItem(item("Show Last Recording", #selector(showLast)))
         }
         menu.addItem(.separator())
-        menu.addItem(item("Quit MacRecorder", #selector(quit), key: "q", enabled: state == .idle))
+        menu.addItem(item("Quit mRecorder", #selector(quit), key: "q", enabled: state == .idle))
     }
 
     private func item(_ title: String, _ action: Selector?, key: String = "", enabled: Bool = true) -> NSMenuItem {

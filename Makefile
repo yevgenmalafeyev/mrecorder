@@ -1,8 +1,8 @@
 # Build, sign with the stable local identity, install to ~/Applications and run.
 # Signing with the same certificate every time keeps the Screen Recording permission across rebuilds.
 SIGN_ID ?= Apple Development
-APP      = build.noindex/Build/Products/Release/MacRecorder.app
-DEST     = $(HOME)/Applications/MacRecorder.app
+APP      = build.noindex/Build/Products/Release/mRecorder.app
+DEST     = $(HOME)/Applications/mRecorder.app
 
 .PHONY: gen build sign install run test clean logs icon dist
 
@@ -10,15 +10,15 @@ gen:
 	xcodegen generate --quiet
 
 build: gen
-	xcodebuild -project MacRecorder.xcodeproj -scheme MacRecorder -configuration Release \
+	xcodebuild -project mRecorder.xcodeproj -scheme mRecorder -configuration Release \
 		-derivedDataPath build.noindex CODE_SIGNING_ALLOWED=NO -quiet build
 
 sign: build
 	codesign --force --options runtime --timestamp=none \
-		--entitlements App/MacRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
+		--entitlements App/mRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
 
 install: sign
-	-pkill -x MacRecorder; sleep 0.5
+	-pkill -x mRecorder; sleep 0.5
 	mkdir -p $(HOME)/Applications
 	rm -rf $(DEST) && cp -R $(APP) $(DEST)
 
@@ -29,26 +29,26 @@ test:
 	cd Packages/RecorderCore && swift test
 
 logs:
-	log stream --style compact --predicate 'subsystem == "local.macrecorder.MacRecorder"'
+	log stream --style compact --predicate 'subsystem == "io.github.yevgenmalafeyev.mrecorder"'
 
 clean:
-	rm -rf build.noindex build MacRecorder.xcodeproj
+	rm -rf build.noindex build mRecorder.xcodeproj
 
-# Universal (Apple Silicon + Intel) DMG for a GitHub release: build.noindex/dist/MacRecorder-<version>.dmg
+# Universal (Apple Silicon + Intel) DMG for a GitHub release: build.noindex/dist/mRecorder-<version>.dmg
 VERSION := $(shell sed -nE 's/.*MARKETING_VERSION: "(.*)"/\1/p' project.yml)
 DIST     = build.noindex/dist
-DMG      = $(DIST)/MacRecorder-$(VERSION).dmg
+DMG      = $(DIST)/mRecorder-$(VERSION).dmg
 
 dist: gen
-	xcodebuild -project MacRecorder.xcodeproj -scheme MacRecorder -configuration Release \
+	xcodebuild -project mRecorder.xcodeproj -scheme mRecorder -configuration Release \
 		-derivedDataPath build.noindex CODE_SIGNING_ALLOWED=NO ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO -quiet build
 	codesign --force --options runtime --timestamp \
-		--entitlements App/MacRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
+		--entitlements App/mRecorder.entitlements --sign "$(SIGN_ID)" $(APP)
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/root
 	cp -R $(APP) $(DIST)/root/
 	ln -s /Applications $(DIST)/root/Applications
-	hdiutil create -quiet -volname "MacRecorder $(VERSION)" -srcfolder $(DIST)/root -fs HFS+ -format UDZO $(DMG)
+	hdiutil create -quiet -volname "mRecorder $(VERSION)" -srcfolder $(DIST)/root -fs HFS+ -format UDZO $(DMG)
 	rm -rf $(DIST)/root
 	@echo "Built $(DMG)"
 

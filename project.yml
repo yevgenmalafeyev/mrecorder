@@ -1,6 +1,6 @@
-name: MacRecorder
+name: mRecorder
 options:
-  bundleIdPrefix: local.macrecorder
+  bundleIdPrefix: io.github.yevgenmalafeyev
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
@@ -13,22 +13,22 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "15.0"
     ENABLE_HARDENED_RUNTIME: YES
 targets:
-  MacRecorder:
+  mRecorder:
     type: application
     platform: macOS
     sources:
       - path: App
         excludes:
           - Info.plist
-          - MacRecorder.entitlements
+          - mRecorder.entitlements
     dependencies:
       - package: RecorderCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: local.macrecorder.MacRecorder
-        PRODUCT_NAME: MacRecorder
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.yevgenmalafeyev.mrecorder
+        PRODUCT_NAME: mRecorder
         INFOPLIST_FILE: App/Info.plist
-        CODE_SIGN_ENTITLEMENTS: App/MacRecorder.entitlements
+        CODE_SIGN_ENTITLEMENTS: App/mRecorder.entitlements
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"

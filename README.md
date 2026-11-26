@@ -1,4 +1,4 @@
-# MacRecorder
+# mRecorder
 
 A small menu-bar screen recorder for macOS 15+, made for recording calls and demos.
 
@@ -13,17 +13,17 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
   - even out the volume (EBU R128 loudness levelling of the mixed track),
   - subtitles with [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (`.srt` + embedded track via ffmpeg),
   - a summary and a descriptive file name with the [Claude Code](https://claude.com/claude-code) CLI.
-- Scriptable: `macrecorder://start`, `stop`, `toggle`, `pause`, `resume`, `settings`,
+- Scriptable: `mrecorder://start`, `stop`, `toggle`, `pause`, `resume`, `settings`,
   `camera?on=1&shape=circle&corner=bottomRight`, `source?mode=all&output=combined`.
 
 ## Install
 
-1. Download `MacRecorder-x.y.z.dmg` from [Releases](https://github.com/yevgenmalafeyev/mac-recorder/releases/latest),
-   open it and drag **MacRecorder** to **Applications**. Requires macOS 15 or later (Apple Silicon or Intel).
+1. Download `mRecorder-x.y.z.dmg` from [Releases](https://github.com/yevgenmalafeyev/mrecorder/releases/latest),
+   open it and drag **mRecorder** to **Applications**. Requires macOS 15 or later (Apple Silicon or Intel).
 2. The app is signed but not notarized by Apple, so the first launch is blocked with
-   *"Apple could not verify MacRecorder…"*. Click **Done**, open **System Settings → Privacy & Security**,
-   scroll down and click **Open Anyway** next to MacRecorder, then confirm. This is needed only once.
-   (Or in Terminal: `xattr -dr com.apple.quarantine /Applications/MacRecorder.app`.)
+   *"Apple could not verify mRecorder…"*. Click **Done**, open **System Settings → Privacy & Security**,
+   scroll down and click **Open Anyway** next to mRecorder, then confirm. This is needed only once.
+   (Or in Terminal: `xattr -dr com.apple.quarantine /Applications/mRecorder.app`.)
 3. The icon appears in the menu bar (there is no Dock icon). Allow Screen Recording, Microphone and Camera
    when asked; after granting Screen Recording, quit and reopen the app.
 

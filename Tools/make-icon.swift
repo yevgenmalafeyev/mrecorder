@@ -1,4 +1,4 @@
-// Draws the MacRecorder app icon at 1024x1024 and writes a PNG.
+// Draws the mRecorder app icon at 1024x1024 and writes a PNG.
 // Usage: swift Tools/make-icon.swift <output.png>
 import AppKit
 import CoreGraphics

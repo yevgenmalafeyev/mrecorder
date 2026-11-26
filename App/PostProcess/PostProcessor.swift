@@ -48,7 +48,7 @@ actor PostProcessor {
             return
         }
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("macrecorder-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("mrecorder-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
 

@@ -6,8 +6,8 @@
 	<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-	<key>CFBundleName</key><string>MacRecorder</string>
-	<key>CFBundleDisplayName</key><string>MacRecorder</string>
+	<key>CFBundleName</key><string>mRecorder</string>
+	<key>CFBundleDisplayName</key><string>mRecorder</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
@@ -18,13 +18,13 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleURLName</key><string>local.macrecorder.MacRecorder</string>
-			<key>CFBundleURLSchemes</key><array><string>macrecorder</string></array>
+			<key>CFBundleURLName</key><string>io.github.yevgenmalafeyev.mrecorder</string>
+			<key>CFBundleURLSchemes</key><array><string>mrecorder</string></array>
 		</dict>
 	</array>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
-	<key>NSMicrophoneUsageDescription</key><string>MacRecorder records your microphone into your screen recordings.</string>
-	<key>NSCameraUsageDescription</key><string>MacRecorder adds your camera to screen recordings when you turn it on.</string>
-	<key>NSScreenCaptureUsageDescription</key><string>MacRecorder records your screens, windows and system audio.</string>
+	<key>NSMicrophoneUsageDescription</key><string>mRecorder records your microphone into your screen recordings.</string>
+	<key>NSCameraUsageDescription</key><string>mRecorder adds your camera to screen recordings when you turn it on.</string>
+	<key>NSScreenCaptureUsageDescription</key><string>mRecorder records your screens, windows and system audio.</string>
 </dict>
 </plist>
