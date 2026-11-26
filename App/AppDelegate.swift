@@ -349,7 +349,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
         let shapeName = ov.shape == .circle ? "Circle" : "Rectangle"
         let cornerName = corners.first { $0.1 == ov.corner }?.0 ?? ""
-        let camSettings = item("Camera Style: \(shapeName), \(cornerName.dropFirst(3))", nil)
+        // Drop the arrow: everything after the first space ("↘︎ Bottom Right" -> "Bottom Right").
+        let cornerText = cornerName.split(separator: " ", maxSplits: 1).last.map(String.init) ?? cornerName
+        let camSettings = item("Camera Style: \(shapeName), \(cornerText)", nil)
         camSettings.submenu = camMenu
         menu.addItem(camSettings)
 
@@ -366,7 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
 
         menu.addItem(.separator())
-        menu.addItem(item("Settings…", #selector(openSettings), key: ","))
+        menu.addItem(item("Configuration…", #selector(openSettings), key: ","))
         menu.addItem(item("Open Recordings Folder", #selector(openFolder)))
         if lastRecording != nil {
             menu.addItem(item("Show Last Recording", #selector(showLast)))

@@ -9,7 +9,7 @@ final class SettingsWindowController {
     func show() {
         if window == nil {
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
-            w.title = "mRecorder Settings"
+            w.title = "mRecorder Configuration"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -43,6 +43,17 @@ struct SettingsView: View {
     private let hasFFmpeg = Tools.ffmpeg != nil
 
     var body: some View {
+        TabView {
+            general.tabItem { Label("General", systemImage: "gearshape") }
+            recording.tabItem { Label("Recording", systemImage: "record.circle") }
+            camera.tabItem { Label("Camera", systemImage: "video") }
+            afterRecording.tabItem { Label("After Recording", systemImage: "wand.and.stars") }
+        }
+        .padding(.top, 8)
+        .frame(width: 560, height: 520)
+    }
+
+    private var general: some View {
         Form {
             Section("Saving") {
                 LabeledContent("Folder") {
@@ -70,8 +81,13 @@ struct SettingsView: View {
                     missing("Claude CLI not found, so titles are not available.")
                 }
             }
+        }
+        .formStyle(.grouped)
+    }
 
-            Section("Recording") {
+    private var recording: some View {
+        Form {
+            Section("Video") {
                 Picker("Format", selection: $videoFormat) {
                     Text("MP4, HEVC (small files)").tag(VideoFormat.hevc.rawValue)
                     Text("MP4, H.264 (plays everywhere)").tag(VideoFormat.h264.rawValue)
@@ -97,7 +113,12 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Show mouse pointer", isOn: $showCursor)
             }
+        }
+        .formStyle(.grouped)
+    }
 
+    private var camera: some View {
+        Form {
             Section("Camera") {
                 Picker("Camera appears", selection: $cameraMode) {
                     Text("Only in the video").tag(CameraMode.composited.rawValue)
@@ -111,11 +132,19 @@ struct SettingsView: View {
                 Text("Shape, corner, size and on/off are in the menu and work during recording.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+        }
+        .formStyle(.grouped)
+    }
 
-            Section("After recording") {
+    private var afterRecording: some View {
+        Form {
+            Section("Audio") {
                 Toggle("Even out the volume (EBU R128 loudness levelling)", isOn: $normalizeAudio)
                 Text("Brings quiet and loud voices to a similar level in the played track, so a quiet call or a distant mic is easier to hear. The separate System and Microphone tracks stay untouched.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Subtitles and summary") {
                 Toggle("Transcribe speech (on this Mac, auto-detects language)", isOn: $transcribe)
                     .disabled(!hasWhisper)
                 if !hasWhisper { missing("mlx_whisper not found. Install with: pipx install mlx-whisper") }
@@ -139,7 +168,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 720)
     }
 
     private func missing(_ text: String) -> some View {
