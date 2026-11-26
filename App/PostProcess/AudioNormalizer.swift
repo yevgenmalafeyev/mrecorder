@@ -231,7 +231,8 @@ private final class PCMTrackReader {
             }
             guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
             let length = CMBlockBufferGetDataLength(block)
-            var interleaved = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
+            // Round up so the copy below always fits, even for a length that is not a whole number of floats.
+            var interleaved = [Float](repeating: 0, count: (length + MemoryLayout<Float>.size - 1) / MemoryLayout<Float>.size)
             interleaved.withUnsafeMutableBytes { raw in
                 _ = CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: raw.baseAddress!)
             }

@@ -13,8 +13,16 @@ A small menu-bar screen recorder for macOS 15+, made for recording calls and dem
   - even out the volume (EBU R128 loudness levelling of the mixed track),
   - subtitles with [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) (`.srt` + embedded track via ffmpeg),
   - a summary and a descriptive file name with the [Claude Code](https://claude.com/claude-code) CLI.
-- Scriptable: `mrecorder://start`, `stop`, `toggle`, `pause`, `resume`, `settings`,
+- **Start Recording…** opens a setup window with your last choices preselected: pick a screen (shown in
+  its real arrangement with a live preview), all screens, or a window (live previews with titles); turn system
+  audio, the microphone and the camera on or off, place the camera, and choose the folder. Return starts;
+  double-clicking a preview starts right away.
+- Global keyboard shortcuts, changeable in Configuration → Shortcuts: ⌃⌥⌘R start (press again in the setup
+  window to start), ⌃⌥⌘P pause / resume, ⌃⌥⌘S stop, ⌃⌥⌘M mute / unmute the microphone, ⌃⌥⌘C camera on / off.
+- Scriptable: `mrecorder://start`, `new` (setup window), `stop`, `toggle`, `pause`, `resume`, `mute`, `settings`,
   `camera?on=1&shape=circle&corner=bottomRight`, `source?mode=all&output=combined`.
+  Since any web page or app can open such a link, links only open the setup window until you turn on
+  Configuration → General → Automation; then `start` records right away and the other commands work.
 
 ## Install
 

@@ -49,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             self.notifySaved(url, title: recovered != nil ? "Recording recovered after an unexpected quit" : "Recording saved")
         }
         UNUserNotificationCenter.current().delegate = self
+        signal(SIGPIPE, SIG_IGN) // writing to a tool that already exited must not end the app
+        Hotkeys.shared.handler = { [weak self] action in self?.handleHotkey(action) }
+        Hotkeys.shared.register()
 
         if !Permissions.screenGranted {
             log.info("Screen Recording not granted yet")
@@ -98,7 +101,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         journalClear()
         for e in entries {
             guard let base = e["base"] as? String, let files = e["files"] as? [String] else { continue }
-            let urls = files.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+            // Only recordings this app writes: in the save folder, named after the recording, .mp4 or .mov.
+            let folder = Settings.saveFolder.standardizedFileURL.path
+            let baseURL = URL(fileURLWithPath: base).standardizedFileURL
+            guard baseURL.deletingLastPathComponent().path == folder else {
+                log.error("Ignoring unfinished recording outside the save folder")
+                continue
+            }
+            let urls = files.map { URL(fileURLWithPath: $0).standardizedFileURL }.filter {
+                $0.deletingLastPathComponent().path == folder
+                    && $0.lastPathComponent.hasPrefix(baseURL.lastPathComponent)
+                    && ["mp4", "mov"].contains($0.pathExtension.lowercased())
+                    && FileManager.default.fileExists(atPath: $0.path)
+            }
             Task { @MainActor in
                 var playable: [URL] = []
                 for u in urls {
@@ -116,13 +131,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
     }
 
-    /// mrecorder://start|stop|toggle|pause|resume|camera?on=1&shape=&corner=&size= (Raycast, Shortcuts, scripts).
+    /// mrecorder://start|new|stop|toggle|pause|resume|mute|settings|camera?on=1&shape=&corner=&size=|source?…
+    /// (Raycast, Shortcuts, scripts).
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme == "mrecorder" {
-            switch url.host {
-            case "start": startRecording()
+            let command = url.host ?? ""
+            // Any web page or app can open these links. Unless the user allowed link control, a link can only
+            // open the New Recording window or Configuration, never record or change a recording by itself.
+            let allowed = Settings.allowURLControl
+            if !allowed, !["start", "new", "toggle", "settings"].contains(command) {
+                log.notice("Ignored link command \(command, privacy: .private): link control is off in Configuration")
+                continue
+            }
+            switch command {
+            case "start": allowed ? startRecording() : showSetup()
+            case "new": showSetup()
+            case "mute": toggleMute()
             case "stop": stopRecording()
-            case "toggle": state == .idle ? startRecording() : stopRecording()
+            case "toggle":
+                if state == .idle { allowed ? startRecording() : showSetup() } else if allowed { stopRecording() }
             case "source":
                 // mrecorder://source?mode=display&id=1 | mode=all&output=combined|separate|both | mode=window&app=Safari
                 guard state == .idle else { break }
@@ -138,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                         Settings.selectedWindow = (w.id, w.label)
                         Settings.sourceMode = "window"
                     } else {
-                        log.error("No window found for app \(app, privacy: .public)")
+                        log.error("No window found for app \(app, privacy: .private)")
                     }
                 default:
                     Settings.sourceMode = "display"
@@ -155,9 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
                 applyOverlay { ov in
                     if let s = v("shape").flatMap(OverlayShape.init(rawValue:)) { ov.shape = s }
                     if let c = v("corner").flatMap(OverlayCorner.init(rawValue:)) { ov.corner = c }
-                    if let z = v("size").flatMap(Double.init) { ov.size = z }
+                    if let z = v("size").flatMap(Double.init), z.isFinite { ov.size = Settings.clampedCameraSize(z) }
                 }
-            default: log.error("Unknown URL command: \(url.absoluteString, privacy: .public)")
+            default: log.error("Unknown link command: \(command, privacy: .private)")
             }
         }
     }
@@ -198,8 +225,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func refreshElapsed() {
-        guard state == .recording, let session, session.hasStarted else { return }
-        statusItem.button?.title = " " + Self.format(session.elapsed)
+        guard state == .recording, let session, session.hasStarted, let button = statusItem.button else { return }
+        let text = " " + Self.format(session.elapsed)
+        if session.isMicMuted, let icon = NSImage(systemSymbolName: "mic.slash.fill", accessibilityDescription: "Microphone muted") {
+            let s = NSMutableAttributedString(string: text + " ")
+            let attachment = NSTextAttachment()
+            attachment.image = icon
+            s.append(NSAttributedString(attachment: attachment))
+            s.addAttribute(.font, value: button.font ?? NSFont.menuBarFont(ofSize: 0), range: NSRange(location: 0, length: s.length))
+            button.attributedTitle = s
+        } else {
+            button.title = text
+        }
     }
 
     static func format(_ seconds: Double) -> String {
@@ -216,16 +253,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
         switch state {
         case .idle:
-            menu.addItem(item("Start Recording", #selector(startRecording), enabled: Permissions.screenGranted))
+            menu.addItem(item("Start Recording…", #selector(showSetup), enabled: Permissions.screenGranted, shortcut: .start))
         case .starting:
             menu.addItem(item("Starting…", nil, enabled: false))
         case .recording:
             let elapsed = Self.format(session?.elapsed ?? 0)
-            menu.addItem(item("Stop Recording  \(elapsed)", #selector(stopRecording)))
-            if session?.isPaused == true {
-                menu.addItem(item("Resume", #selector(togglePause)))
-            } else {
-                menu.addItem(item("Pause", #selector(togglePause)))
+            menu.addItem(item("Stop Recording  \(elapsed)", #selector(stopRecording), shortcut: .stop))
+            menu.addItem(item(session?.isPaused == true ? "Resume" : "Pause", #selector(togglePause), shortcut: .pause))
+            if session?.request.microphone != nil {
+                menu.addItem(item(session?.isMicMuted == true ? "Unmute Microphone" : "Mute Microphone",
+                                  #selector(toggleMute), shortcut: .mute))
             }
         case .finalizing:
             menu.addItem(item("Saving recording…", nil, enabled: false))
@@ -309,7 +346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         // Camera (all items work during recording too)
         menu.addItem(.separator())
         let ov = Settings.overlay
-        let camOn = item(ov.enabled ? "Camera: On" : "Camera: Off", #selector(toggleCamera))
+        let camOn = item(ov.enabled ? "Camera: On" : "Camera: Off", #selector(toggleCamera), shortcut: .camera)
         camOn.state = ov.enabled ? .on : .off
         menu.addItem(camOn)
         let camMenu = NSMenu()
@@ -377,11 +414,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         menu.addItem(item("Quit mRecorder", #selector(quit), key: "q", enabled: state == .idle))
     }
 
-    private func item(_ title: String, _ action: Selector?, key: String = "", enabled: Bool = true) -> NSMenuItem {
+    private func item(_ title: String, _ action: Selector?, key: String = "", enabled: Bool = true,
+                      shortcut: HotkeyAction? = nil) -> NSMenuItem {
         let it = NSMenuItem(title: title, action: action, keyEquivalent: key)
         it.target = self
         it.isEnabled = enabled
+        if let shortcut { Settings.shortcut(for: shortcut)?.apply(to: it) }
         return it
+    }
+
+    // MARK: - Shortcuts
+
+    private func handleHotkey(_ action: HotkeyAction) {
+        switch action {
+        case .start:
+            guard state == .idle else { return }
+            // Pressed again while the setup window is open: start with what it shows.
+            SetupWindowController.shared.isVisible ? SetupWindowController.shared.startNow() : showSetup()
+        case .pause: togglePause()
+        case .stop: stopRecording()
+        case .mute: toggleMute()
+        case .camera: toggleCamera()
+        }
+    }
+
+    @objc private func showSetup() {
+        guard state == .idle else { return }
+        SetupWindowController.shared.show { [weak self] in self?.startRecording() }
+    }
+
+    @objc private func toggleMute() {
+        guard state == .recording, let session, session.request.microphone != nil else { return }
+        session.setMicMuted(!session.isMicMuted)
+        refreshElapsed()
     }
 
     // MARK: - Actions
@@ -462,7 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let url = Bundle.main.bundleURL
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 1; open \"\(url.path)\""]
+        task.arguments = ["-c", "sleep 1; open \"$0\"", url.path] // the path is an argument, never shell code
         try? task.run()
         NSApp.terminate(nil)
     }
@@ -547,7 +612,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         }
 
         let request = RecordingRequest(
-            target: target, multiOutput: Settings.multiOutput, microphone: mic, fps: Settings.fps,
+            target: target, multiOutput: Settings.multiOutput, microphone: mic, systemAudio: Settings.systemAudio,
+            fps: Settings.fps,
             maxShortSide: Settings.maxShortSide, format: Settings.videoFormat, showCursor: Settings.showCursor,
             includeOwnWindows: ownWindows, combinedHeight: Settings.combinedHeight, baseURL: baseURL
         )
@@ -555,10 +621,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         session.onFailure = { [weak self] error in
             guard let self, self.state == .recording else { return }
             self.stopRecording()
-            // A closed window is a normal end of a window recording: save quietly.
-            if case RecorderError.windowClosed = error {
-                log.notice("Recorded window closed; recording saved")
-            } else {
+            // A closed window ends a window recording, and the menu-bar indicator's Stop is a normal stop: save quietly.
+            switch error {
+            case RecorderError.windowClosed: log.notice("Recorded window closed; recording saved")
+            case RecorderError.stoppedBySystem: log.notice("Stopped from the system menu bar; recording saved")
+            default:
                 self.showError(error)
             }
         }
@@ -663,7 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     }
 
     private func showError(_ error: Error) {
-        log.error("\(error.localizedDescription, privacy: .public)")
+        log.error("\(error.localizedDescription, privacy: .private)")
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert(error: error)
         alert.runModal()

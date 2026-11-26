@@ -5,15 +5,30 @@ import Foundation
 enum Tools {
     static let searchPaths: [String] = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.claude/local", "/usr/bin", "/bin"]
+        // The legacy Claude Code location comes last, so it can't shadow a regular install.
+        return ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "\(home)/.claude/local"]
     }()
 
+    /// The tool's real file (symlinks resolved), shown in Configuration so the user can see what runs.
     static func find(_ name: String) -> URL? {
         for dir in searchPaths {
             let path = "\(dir)/\(name)"
-            if FileManager.default.isExecutableFile(atPath: path) { return URL(fileURLWithPath: path) }
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return URL(fileURLWithPath: path).resolvingSymlinksInPath()
+            }
         }
         return nil
+    }
+
+    /// Only what the tools need; the rest of this app's environment is not passed on.
+    private static var environment: [String: String] {
+        let mine = ProcessInfo.processInfo.environment
+        var env: [String: String] = [:]
+        for key in ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "__CF_USER_TEXT_ENCODING"] { env[key] = mine[key] }
+        env["HOME"] = env["HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
+        env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
+        env["PATH"] = (searchPaths + ["/usr/sbin", "/sbin"]).joined(separator: ":")
+        return env
     }
 
     static var claude: URL? { find("claude") }
@@ -36,9 +51,7 @@ enum Tools {
                 p.executableURL = tool
                 p.arguments = args
                 if let cwd { p.currentDirectoryURL = cwd }
-                var env = ProcessInfo.processInfo.environment
-                env["PATH"] = (searchPaths + [env["PATH"] ?? ""]).joined(separator: ":")
-                p.environment = env
+                p.environment = environment
 
                 let out = Pipe(), err = Pipe(), inp = Pipe()
                 p.standardOutput = out
@@ -53,7 +66,8 @@ enum Tools {
 
                 do { try p.run() } catch { cont.resume(throwing: error); return }
                 if let stdin {
-                    inp.fileHandleForWriting.write(Data(stdin.utf8))
+                    // A tool that exits early closes the pipe; that must not raise (SIGPIPE is ignored at launch).
+                    try? inp.fileHandleForWriting.write(contentsOf: Data(stdin.utf8))
                     try? inp.fileHandleForWriting.close()
                 }
                 let timer = DispatchWorkItem { if p.isRunning { p.terminate() } }

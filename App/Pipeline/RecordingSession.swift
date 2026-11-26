@@ -42,6 +42,8 @@ struct RecordingRequest {
     let target: CaptureTarget
     let multiOutput: MultiDisplayOutput
     let microphone: AVCaptureDevice?
+    /// Record the sound of other apps (call participants, videos). Off keeps a silent System track.
+    let systemAudio: Bool
     let fps: Int
     let maxShortSide: Int
     let format: VideoFormat
@@ -106,6 +108,7 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
     private let compositor = Compositor()
     private var cameraDeviceID: String?
     private let firstFrame = Locked<CheckedContinuation<Void, Never>?>(nil)
+    private let micMuted = Locked(false)
 
     // Video queue state
     private var nextIndex: Int64 = 0
@@ -134,6 +137,14 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
     var elapsed: Double { timeline.get()?.outputSecondsClamped(host: hostNow()) ?? 0 }
     var isPaused: Bool { timeline.get()?.isPaused ?? false }
     var hasStarted: Bool { timeline.get() != nil }
+
+    var isMicMuted: Bool { micMuted.get() }
+
+    /// While muted the microphone is recorded as silence, so the timing of the tracks is kept.
+    func setMicMuted(_ muted: Bool) {
+        micMuted.set(muted)
+        log.notice("Microphone \(muted ? "muted" : "unmuted", privacy: .public) at \(self.elapsed, format: .fixed(precision: 2)) s")
+    }
 
     // MARK: - Pause and camera (call from main)
 
@@ -254,7 +265,8 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
         guard let audioDisplay = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first
         else { throw RecorderError.noDisplay }
         let acfg = SCStreamConfiguration()
-        acfg.capturesAudio = true
+        // System audio that is not wanted is still dropped below; capturing stays on with a microphone.
+        acfg.capturesAudio = request.systemAudio || request.microphone != nil
         acfg.sampleRate = Int(AudioInputConverter.sampleRate)
         acfg.channelCount = 2
         acfg.excludesCurrentProcessAudio = true
@@ -268,7 +280,7 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
             acfg.microphoneCaptureDeviceID = mic.uniqueID
         }
         let aus = SCStream(filter: SCContentFilter(display: audioDisplay, excludingWindows: []), configuration: acfg, delegate: self)
-        try aus.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+        if acfg.capturesAudio { try aus.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue) }
         if request.microphone != nil {
             try aus.addStreamOutput(self, type: .microphone, sampleHandlerQueue: audioQueue)
         }
@@ -312,7 +324,13 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
 
     private func urlFor(suffix: String?) -> URL {
         let base = request.baseURL.lastPathComponent
-        let name = suffix.map { "\(base) (\($0))" } ?? base
+        // Display names come from the monitor (EDID, AirPlay, virtual displays): keep them to one plain path component.
+        let safe = suffix.map {
+            String($0.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(Character.init))
+                .replacingOccurrences(of: "[/:\\\\]", with: "-", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " ."))
+        }
+        let name = safe.map { $0.isEmpty ? base : "\(base) (\($0))" } ?? base
         return request.baseURL.deletingLastPathComponent().appendingPathComponent(name + "." + request.format.fileExtension)
     }
 
@@ -500,8 +518,11 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
 
     private func handleAudio(_ sb: CMSampleBuffer, isMic: Bool) {
         guard !stopping, let tl = timeline.get() else { return }
+        // Without system audio its track is filled with silence by `audioTick`.
+        if !isMic, !request.systemAudio { return }
         let converter = isMic ? micConverter : systemConverter
-        guard let (start, audio) = converter.convert(sb) else { return }
+        guard let (start, converted) = converter.convert(sb) else { return }
+        let audio = isMic && micMuted.get() ? converted.map { [Float](repeating: 0, count: $0.count) } : converted
         // Audio captured while paused is dropped.
         guard let position = tl.outputSeconds(host: start) else { return }
         let startFrame = Int64((position * AudioInputConverter.sampleRate).rounded())
@@ -553,7 +574,11 @@ final class RecordingSession: NSObject, SCStreamOutput, SCStreamDelegate, @unche
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         log.error("Stream stopped: \(error.localizedDescription, privacy: .public)")
-        if case .window = request.target {
+        let ns = error as NSError
+        if ns.domain == SCStreamErrorDomain, ns.code == SCStreamError.Code.userStopped.rawValue {
+            // Stopped from the system's screen-recording indicator in the menu bar: a normal stop.
+            fail(RecorderError.stoppedBySystem)
+        } else if case .window = request.target {
             fail(RecorderError.windowClosed)
         } else {
             fail(RecorderError.capture(error.localizedDescription))

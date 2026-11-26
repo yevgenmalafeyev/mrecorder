@@ -40,6 +40,12 @@ enum Settings {
         set { d.set(newValue, forKey: "micDeviceID") }
     }
 
+    /// Record the sound of other apps.
+    static var systemAudio: Bool {
+        get { bool(Keys.systemAudio, default: true) }
+        set { d.set(newValue, forKey: Keys.systemAudio) }
+    }
+
     static var fps: Int {
         get { let v = d.integer(forKey: Keys.fps); return v > 0 ? v : 30 }
         set { d.set(newValue, forKey: Keys.fps) }
@@ -105,7 +111,7 @@ enum Settings {
                 enabled: d.bool(forKey: Keys.cameraOn),
                 shape: OverlayShape(rawValue: d.string(forKey: Keys.cameraShape) ?? "") ?? .circle,
                 corner: OverlayCorner(rawValue: d.string(forKey: Keys.cameraCorner) ?? "") ?? .bottomRight,
-                size: d.double(forKey: Keys.cameraSize) > 0 ? d.double(forKey: Keys.cameraSize) : 0.22,
+                size: d.double(forKey: Keys.cameraSize) > 0 ? clampedCameraSize(d.double(forKey: Keys.cameraSize)) : 0.22,
                 mirror: bool(Keys.cameraMirror, default: true)
             )
         }
@@ -117,6 +123,14 @@ enum Settings {
             d.set(newValue.mirror, forKey: Keys.cameraMirror)
         }
     }
+
+    /// Camera height as a fraction of the video's shorter side, kept to a sane range (also rejects inf/NaN).
+    static func clampedCameraSize(_ v: Double) -> Double {
+        v.isFinite ? min(max(v, 0.1), 0.4) : 0.22
+    }
+
+    /// mrecorder:// links may start, stop and change recordings. Off: a link only opens the New Recording window.
+    static var allowURLControl: Bool { bool(Keys.allowURLControl, default: false) }
 
     /// Camera uniqueID; nil = system default camera.
     static var cameraDeviceID: String? {
@@ -132,6 +146,8 @@ enum Settings {
         static let sourceMode = "sourceMode"
         static let multiOutput = "multiOutput"
         static let combinedHeight = "combinedHeight"
+        static let systemAudio = "systemAudio"
+        static let allowURLControl = "allowURLControl"
 
         static let cameraOn = "cameraOn"
         static let cameraShape = "cameraShape"
@@ -225,6 +241,11 @@ enum Devices {
         case .some(let id): return AVCaptureDevice(uniqueID: id) ?? AVCaptureDevice.default(for: .audio)
         case .none: return AVCaptureDevice.default(for: .audio)
         }
+    }
+
+    /// The chosen microphone, or the system default when the microphone is off.
+    static func selectedMicrophoneOrDefault() -> AVCaptureDevice? {
+        selectedMicrophone() ?? AVCaptureDevice.default(for: .audio) ?? microphones().first
     }
 
     static func cameras() -> [AVCaptureDevice] {

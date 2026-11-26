@@ -242,6 +242,7 @@ enum RecorderError: LocalizedError {
     case noFrames
     case noWindow
     case windowClosed
+    case stoppedBySystem
     case lowDisk
     case capture(String)
 
@@ -253,6 +254,7 @@ enum RecorderError: LocalizedError {
         case .noWindow: return "The selected window is no longer open. Choose another window."
         case .lowDisk: return "Less than 2 GB of disk space is free, so recording was stopped or not started. Free some space, choose another folder, or lower the resolution."
         case .windowClosed: return "The recorded window was closed. The recording up to that moment has been saved."
+        case .stoppedBySystem: return "Recording was stopped from the macOS menu bar. The recording has been saved."
         case .capture(let s): return "Capture failed: \(s)"
         }
     }
