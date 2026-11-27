@@ -41,13 +41,33 @@ final class SetupWindowController: NSObject, NSWindowDelegate {
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.delegate = self
-            w.center()
             window = w
+            Self.centerOnActiveScreen(w)
             self.model = model
             NSApp.activate(ignoringOtherApps: true)
             w.makeKeyAndOrderFront(nil)
+            // SwiftUI may settle the window's size only after it is shown; centre again once it has.
+            DispatchQueue.main.async { [weak w] in
+                if let w { MainActor.assumeIsolated { Self.centerOnActiveScreen(w) } }
+            }
             model.startRefreshing()
         }
+    }
+
+    /// Exactly centred on the screen under the mouse (NSWindow.center() sits higher than centre,
+    /// and runs before SwiftUI has sized the window).
+    private static func centerOnActiveScreen(_ w: NSWindow) {
+        if let content = w.contentViewController?.view {
+            let fitting = content.fittingSize
+            if fitting.width > 0, fitting.height > 0 { w.setContentSize(fitting) }
+        }
+        let mouse = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+            ?? NSScreen.main else { return w.center() }
+        let area = screen.visibleFrame
+        let size = w.frame.size
+        w.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(),
+                                 y: max(area.minY, (area.midY - size.height / 2).rounded())))
     }
 
     /// Starts with the choices currently shown (the start shortcut pressed while the window is open).
@@ -104,8 +124,15 @@ final class SetupModel: ObservableObject {
     @Published var systemAudio: Bool
     let microphones: [(id: String, name: String)]
 
-    @Published var overlay: OverlayConfig
-    @Published var cameraID: String
+    @Published var overlay: OverlayConfig {
+        didSet { if overlay.enabled != oldValue.enabled { updateCameraPreview() } }
+    }
+    @Published var cameraID: String {
+        didSet { if cameraID != oldValue { updateCameraPreview() } }
+    }
+    /// Live picture shown in the camera card while the window is open.
+    let cameraPreview = CameraPreview()
+    private var windowOpen = false
     let cameras: [(id: String, name: String)]
 
     @Published var saveFolder: URL
@@ -167,6 +194,8 @@ final class SetupModel: ObservableObject {
     // MARK: Previews
 
     func startRefreshing() {
+        windowOpen = true
+        updateCameraPreview()
         refreshTask = Task { [weak self] in
             var round = 0
             while !Task.isCancelled {
@@ -179,6 +208,8 @@ final class SetupModel: ObservableObject {
     }
 
     func stopRefreshing() {
+        windowOpen = false
+        updateCameraPreview()
         refreshTask?.cancel()
         refreshTask = nil
     }
@@ -244,6 +275,15 @@ final class SetupModel: ObservableObject {
         cfg.showsCursor = false
         cfg.capturesAudio = false
         return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+    }
+
+    /// The camera runs only while the window is open and the camera is switched on.
+    private func updateCameraPreview() {
+        if windowOpen, overlay.enabled {
+            cameraPreview.start(deviceID: cameraID.isEmpty ? nil : cameraID)
+        } else {
+            cameraPreview.stop()
+        }
     }
 
     // MARK: Actions
@@ -584,7 +624,11 @@ private struct CameraCard: View {
                 .disabled(model.cameras.isEmpty)
             if model.overlay.enabled {
                 HStack(alignment: .center, spacing: 12) {
-                    CornerChooser(corner: $model.overlay.corner, shape: model.overlay.shape)
+                    // How you will look in the bubble: same crop, shape and mirroring as the recording.
+                    CameraPreviewView(preview: model.cameraPreview, shape: model.overlay.shape, mirror: model.overlay.mirror)
+                        .frame(width: model.overlay.shape == .circle ? 68 : 121, height: 68)
+                        .frame(width: 121)
+                        .help("How you will appear in the video")
                     VStack(alignment: .leading, spacing: 6) {
                         Picker("", selection: $model.overlay.shape) {
                             Image(systemName: "circle").tag(OverlayShape.circle)
@@ -599,11 +643,14 @@ private struct CameraCard: View {
                         .pickerStyle(.segmented).labelsHidden()
                     }
                 }
-                if model.cameras.count > 1 {
-                    Picker("", selection: $model.cameraID) {
-                        ForEach(model.cameras, id: \.id) { Text($0.name).tag($0.id) }
+                HStack(alignment: .center, spacing: 12) {
+                    CornerChooser(corner: $model.overlay.corner, shape: model.overlay.shape)
+                    if model.cameras.count > 1 {
+                        Picker("", selection: $model.cameraID) {
+                            ForEach(model.cameras, id: \.id) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
                 }
             }
         }
